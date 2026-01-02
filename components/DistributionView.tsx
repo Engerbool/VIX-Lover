@@ -11,72 +11,16 @@ import {
   ReferenceLine,
   Label
 } from 'recharts';
-import { useVixHistory } from '../hooks';
-import LoadingState from './LoadingState';
+import type { DailyVixData } from '../types';
 
-// --- 1. Mock Data Generator (Fallback for API failure) ---
-interface DailyData {
-  date: string;
-  close: number;
-  year: number;
+interface DistributionViewProps {
+  data: DailyVixData[];
+  isLoading: boolean;
+  error: Error | null;
 }
 
-const generateHistory = (): DailyData[] => {
-  const data: DailyData[] = [];
-  const start = new Date('2020-01-01');
-  const end = new Date();
-  let current = new Date(start);
-  let vix = 15;
+const DistributionView: React.FC<DistributionViewProps> = ({ data, isLoading, error }) => {
 
-  while (current <= end) {
-    const year = current.getFullYear();
-    const month = current.getMonth();
-
-    let target = 16;
-    let volOfVol = 1.5;
-    let jumpProb = 0.02;
-
-    if (year === 2020 && month === 2) {
-        target = 60;
-        volOfVol = 8;
-        jumpProb = 0.5;
-    } else if (year === 2022) {
-        target = 24;
-        volOfVol = 2.5;
-    } else if (year >= 2023) {
-        target = 13.5;
-        volOfVol = 1.0;
-    }
-
-    const meanReversion = (target - vix) * 0.15;
-    const shock = (Math.random() - 0.5) * volOfVol;
-
-    let jump = 0;
-    if (Math.random() < jumpProb) {
-        jump = Math.random() * 5;
-    }
-
-    vix = vix + meanReversion + shock + jump;
-
-    if (vix < 9.5) vix = 9.5 + Math.random() * 0.5;
-    if (vix > 85) vix = 85;
-
-    data.push({
-      date: current.toISOString().split('T')[0],
-      close: parseFloat(vix.toFixed(2)),
-      year: year
-    });
-
-    current.setDate(current.getDate() + 1);
-  }
-  return data;
-};
-
-const DistributionView: React.FC = () => {
-  // Fetch real VIX data from API
-  const { data: apiData, isLoading, error } = useVixHistory({
-    startDate: '2020-01-01',
-  });
 
   // State for Range Slider
   const [range, setRange] = useState({ start: 0, end: 0 });
@@ -88,36 +32,43 @@ const DistributionView: React.FC = () => {
   // State for Hover Interaction
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
-  // Fallback to mock data if API fails or returns empty
-  const mockHistory = useMemo(() => generateHistory(), []);
+  // Use data from props
   const fullHistory = useMemo(() => {
-    if (apiData && apiData.length > 0) {
-      return apiData.map(d => ({
-        date: d.date,
-        close: d.close,
-        year: d.year
-      }));
-    }
-    return mockHistory;
-  }, [apiData, mockHistory]);
+    return data.map(d => ({
+      date: d.date,
+      close: d.close,
+      year: d.year
+    }));
+  }, [data]);
 
   const totalDays = fullHistory.length;
 
-  // Initialize range when data loads
+  // Initialize and clamp range when data loads or changes
   useEffect(() => {
-    if (totalDays > 0 && !rangeInitialized) {
-      setRange({ start: 0, end: totalDays - 1 });
-      setRangeInitialized(true);
+    if (totalDays > 0) {
+      setRange(prev => {
+        const maxEnd = totalDays - 1;
+        // First load: initialize to full range
+        if (!rangeInitialized) {
+          setRangeInitialized(true);
+          return { start: 0, end: maxEnd };
+        }
+        // Data changed: clamp end to valid range
+        if (prev.end > maxEnd) {
+          return { ...prev, end: maxEnd };
+        }
+        return prev;
+      });
     }
   }, [totalDays, rangeInitialized]);
 
   // Compute Histogram based on Range and Bin Size
   const { chartData, meanVix, medianVix, xAxisTicks } = useMemo(() => {
-    // 1. Slice data
-    const sliced = fullHistory.slice(
-        Math.max(0, range.start), 
-        Math.min(totalDays, range.end + 1)
-    );
+    // 1. Slice data - use full range if not initialized yet OR if range is invalid
+    const rangeIsValid = range.end > range.start && range.end < totalDays;
+    const sliced = (!rangeInitialized || !rangeIsValid) && totalDays > 0
+      ? fullHistory.slice(0, totalDays)
+      : fullHistory.slice(Math.max(0, range.start), Math.min(totalDays, range.end + 1));
 
     // 2. Statistics
     const sum = sliced.reduce((acc, curr) => acc + curr.close, 0);
@@ -126,7 +77,9 @@ const DistributionView: React.FC = () => {
     const sorted = [...sliced].sort((a, b) => a.close - b.close);
     const median = sorted.length ? sorted[Math.floor(sorted.length / 2)].close : 0;
 
-    if (sliced.length === 0) return { chartData: [], meanVix: 0, medianVix: 0, xAxisTicks: [] };
+    if (sliced.length === 0) {
+      return { chartData: [], meanVix: 0, medianVix: 0, xAxisTicks: [] };
+    }
 
     // 3. Dynamic Bucketing
     const rawMin = Math.min(...sliced.map(d => d.close));
@@ -192,13 +145,13 @@ const DistributionView: React.FC = () => {
         }
     }
 
-    return { 
+    return {
         chartData: chartDataArray,
         meanVix: mean,
         medianVix: median,
         xAxisTicks: ticks
     };
-  }, [fullHistory, range, totalDays, binSize]);
+  }, [fullHistory, range, totalDays, binSize, rangeInitialized]);
 
   // --- Slider Interaction Logic ---
   const trackRef = useRef<HTMLDivElement>(null);
@@ -220,9 +173,11 @@ const DistributionView: React.FC = () => {
       setRange(prev => {
         const gap = 30; // Minimum 30 days window
         if (isDragging.current === 'start') {
-           return { ...prev, start: Math.min(index, prev.end - gap) };
+           // Left handle: cannot go below 0 or beyond (end - gap)
+           return { ...prev, start: Math.max(0, Math.min(index, prev.end - gap)) };
         } else {
-           return { ...prev, end: Math.max(index, prev.start + gap) };
+           // Right handle: cannot exceed (totalDays - 1) or go below (start + gap)
+           return { ...prev, end: Math.min(totalDays - 1, Math.max(index, prev.start + gap)) };
         }
       });
     };
@@ -241,16 +196,22 @@ const DistributionView: React.FC = () => {
     };
   }, [totalDays]);
 
-  // Helper to format date display
-  const startDateStr = fullHistory[Math.min(Math.max(0, range.start), totalDays-1)]?.date;
-  const endDateStr = fullHistory[Math.min(Math.max(0, range.end), totalDays-1)]?.date;
+  // Helper to format date display - handle uninitialized state
+  const displayStart = rangeInitialized ? range.start : 0;
+  const displayEnd = rangeInitialized ? range.end : totalDays - 1;
+  const startDateStr = totalDays > 0 ? fullHistory[Math.min(Math.max(0, displayStart), totalDays-1)]?.date : '';
+  const endDateStr = totalDays > 0 ? fullHistory[Math.min(Math.max(0, displayEnd), totalDays-1)]?.date : '';
 
-  const leftPct = totalDays > 0 ? (range.start / totalDays) * 100 : 0;
-  const rightPct = totalDays > 0 ? (range.end / totalDays) * 100 : 0;
+  // Clamp range values for display calculations
+  const clampedStart = Math.max(0, Math.min(displayStart, totalDays - 1));
+  const clampedEnd = Math.max(0, Math.min(displayEnd, totalDays - 1));
+  const maxIndex = totalDays > 1 ? totalDays - 1 : 1;
+  const leftPct = (clampedStart / maxIndex) * 100;
+  const rightPct = (clampedEnd / maxIndex) * 100;
 
   // Show loading state (after all hooks)
-  if (isLoading && apiData.length === 0) {
-    return <LoadingState message="Loading VIX history..." />;
+  if (isLoading && data.length === 0) {
+    return <div className="w-full h-full flex items-center justify-center"><div className="text-zinc-500">Loading VIX history...</div></div>;
   }
 
   return (
@@ -315,6 +276,7 @@ const DistributionView: React.FC = () => {
       
       {/* Chart Area */}
       <div className="h-[450px] w-full bg-zinc-900/20 rounded-xl p-4 border border-white/5 backdrop-blur-md relative mb-6">
+        {chartData.length > 0 ? (
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
             data={chartData}
@@ -424,7 +386,12 @@ const DistributionView: React.FC = () => {
             </Bar>
           </BarChart>
         </ResponsiveContainer>
-        
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <div className="text-zinc-500 text-sm">Loading chart...</div>
+          </div>
+        )}
+
         {/* Annotations */}
         <div className="absolute top-6 right-6 text-right hidden sm:block">
             <p className="text-xs text-zinc-500 max-w-[150px] leading-relaxed">

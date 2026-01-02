@@ -10,10 +10,8 @@ import {
   ReferenceLine,
   Cell
 } from 'recharts';
-import { useCorrelationData } from '../hooks';
-import LoadingState from './LoadingState';
+import type { CorrelationData } from '../types';
 
-// --- 1. Mock Data Generator (Fallback for API failure) ---
 interface CorrelationDataType {
   date: string;
   vix: number;
@@ -21,66 +19,6 @@ interface CorrelationDataType {
   spxChange: number;
   year: number;
 }
-
-const generateCorrelationHistory = (): CorrelationDataType[] => {
-  const data: CorrelationDataType[] = [];
-  const start = new Date('2020-01-01');
-  const end = new Date();
-  let current = new Date(start);
-  let spx = 3230;
-
-  while (current <= end) {
-    const year = current.getFullYear();
-    const month = current.getMonth();
-
-    let baseVol = 0.008;
-    let drift = 0.0004;
-    let baseVix = 18;
-
-    if (year === 2020 && month === 2) {
-        baseVol = 0.04;
-        drift = -0.02;
-        baseVix = 50;
-    } else if (year === 2020 && month > 2) {
-        baseVol = 0.015;
-        drift = 0.002;
-        baseVix = 28;
-    } else if (year === 2022) {
-        drift = -0.0005;
-        baseVol = 0.012;
-        baseVix = 24;
-    } else if (year >= 2023) {
-        baseVol = 0.007;
-        baseVix = 14;
-    }
-
-    const u = 1 - Math.random();
-    const v = Math.random();
-    const z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
-    const spxChangePercent = (z * baseVol) + drift;
-    spx = spx * (1 + spxChangePercent);
-
-    const reactionMultiplier = 400;
-    let theoreticalVix = baseVix - (spxChangePercent * reactionMultiplier);
-    const noise = (Math.random() - 0.5) * 3;
-    let vix = theoreticalVix + noise;
-
-    if (vix < 9.5) vix = 9.5 + Math.random();
-    if (vix > 85) vix = 85;
-    if (spx < 2200) spx = 2200;
-
-    data.push({
-      date: current.toISOString().split('T')[0],
-      vix: parseFloat(vix.toFixed(2)),
-      spx: parseFloat(spx.toFixed(2)),
-      spxChange: parseFloat((spxChangePercent * 100).toFixed(2)),
-      year
-    });
-
-    current.setDate(current.getDate() + 1);
-  }
-  return data;
-};
 
 // --- Helper: Simple Linear Regression for Trendline ---
 const calculateTrendLine = (data: CorrelationDataType[]) => {
@@ -109,12 +47,13 @@ const calculateTrendLine = (data: CorrelationDataType[]) => {
     ];
 };
 
-const CorrelationView: React.FC = () => {
-  // Fetch real correlation data from API
-  const { data: apiData, isLoading, error } = useCorrelationData({
-    startDate: '2020-01-01',
-  });
+interface CorrelationViewProps {
+  data: CorrelationData[];
+  isLoading: boolean;
+  error: Error | null;
+}
 
+const CorrelationView: React.FC<CorrelationViewProps> = ({ data, isLoading, error }) => {
   // State for Range Slider (Indices)
   const [range, setRange] = useState({ start: 0, end: 0 });
   const [rangeInitialized, setRangeInitialized] = useState(false);
@@ -122,32 +61,44 @@ const CorrelationView: React.FC = () => {
   // State for Hover Interaction
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
-  // Fallback to mock data if API fails or returns empty
-  const mockHistory = useMemo(() => generateCorrelationHistory(), []);
-  const fullHistory = useMemo(() => {
-    if (apiData && apiData.length > 0) {
-      return apiData;
-    }
-    return mockHistory;
-  }, [apiData, mockHistory]);
-
+  // Use data from props
+  const fullHistory = data;
   const totalDays = fullHistory.length;
 
-  // Initialize range when data loads
+  // Initialize and clamp range when data loads or changes
   useEffect(() => {
-    if (totalDays > 0 && !rangeInitialized) {
-      setRange({ start: Math.max(0, totalDays - 365), end: totalDays - 1 });
-      setRangeInitialized(true);
+    if (totalDays > 0) {
+      setRange(prev => {
+        const maxEnd = totalDays - 1;
+        // First load: initialize to last 365 days
+        if (!rangeInitialized) {
+          setRangeInitialized(true);
+          return { start: Math.max(0, totalDays - 365), end: maxEnd };
+        }
+        // Data changed: clamp end to valid range
+        if (prev.end > maxEnd) {
+          return { ...prev, end: maxEnd };
+        }
+        return prev;
+      });
     }
   }, [totalDays, rangeInitialized]);
 
   // Filter Data based on Range
   const chartData = useMemo(() => {
+    // Check if range is valid
+    const rangeIsValid = range.end > range.start && range.end < totalDays;
+
+    // If range not initialized yet OR range is invalid, show last 365 days
+    if ((!rangeInitialized || !rangeIsValid) && totalDays > 0) {
+      const start = Math.max(0, totalDays - 365);
+      return fullHistory.slice(start, totalDays);
+    }
     return fullHistory.slice(
         Math.max(0, range.start),
         Math.min(totalDays, range.end + 1)
     );
-  }, [fullHistory, range, totalDays]);
+  }, [fullHistory, range, totalDays, rangeInitialized]);
 
   // Calculate Trendline
   const trendData = useMemo(() => calculateTrendLine(chartData), [chartData]);
@@ -172,9 +123,11 @@ const CorrelationView: React.FC = () => {
       setRange(prev => {
         const gap = 30; // Minimum 30 days window
         if (isDragging.current === 'start') {
-           return { ...prev, start: Math.min(index, prev.end - gap) };
+           // Left handle: cannot go below 0 or beyond (end - gap)
+           return { ...prev, start: Math.max(0, Math.min(index, prev.end - gap)) };
         } else {
-           return { ...prev, end: Math.max(index, prev.start + gap) };
+           // Right handle: cannot exceed (totalDays - 1) or go below (start + gap)
+           return { ...prev, end: Math.min(totalDays - 1, Math.max(index, prev.start + gap)) };
         }
       });
     };
@@ -193,15 +146,22 @@ const CorrelationView: React.FC = () => {
     };
   }, [totalDays]);
 
-  // Formatters
-  const startDateStr = fullHistory[Math.min(Math.max(0, range.start), totalDays-1)]?.date;
-  const endDateStr = fullHistory[Math.min(Math.max(0, range.end), totalDays-1)]?.date;
-  const leftPct = totalDays > 0 ? (range.start / totalDays) * 100 : 0;
-  const rightPct = totalDays > 0 ? (range.end / totalDays) * 100 : 0;
+  // Formatters - handle uninitialized state
+  const displayStart = rangeInitialized ? range.start : Math.max(0, totalDays - 365);
+  const displayEnd = rangeInitialized ? range.end : totalDays - 1;
+  const startDateStr = totalDays > 0 ? fullHistory[Math.min(Math.max(0, displayStart), totalDays-1)]?.date : '';
+  const endDateStr = totalDays > 0 ? fullHistory[Math.min(Math.max(0, displayEnd), totalDays-1)]?.date : '';
+
+  // Clamp range values for display calculations
+  const clampedStart = Math.max(0, Math.min(displayStart, totalDays - 1));
+  const clampedEnd = Math.max(0, Math.min(displayEnd, totalDays - 1));
+  const maxIndex = totalDays > 1 ? totalDays - 1 : 1;
+  const leftPct = (clampedStart / maxIndex) * 100;
+  const rightPct = (clampedEnd / maxIndex) * 100;
 
   // Show loading state (after all hooks)
-  if (isLoading && apiData.length === 0) {
-    return <LoadingState message="Loading market data..." />;
+  if (isLoading && data.length === 0) {
+    return <div className="w-full h-full flex items-center justify-center"><div className="text-zinc-500">Loading market data...</div></div>;
   }
 
   return (
@@ -235,7 +195,8 @@ const CorrelationView: React.FC = () => {
       
       {/* Chart Area */}
       <div className="w-full h-[500px] bg-zinc-900/20 rounded-xl p-4 border border-white/5 backdrop-blur-md mb-6 relative">
-        <ResponsiveContainer width="100%" height="100%">
+        {chartData.length > 0 ? (
+          <ResponsiveContainer width="100%" height="100%">
           <ScatterChart
             margin={{
               top: 20,
@@ -356,8 +317,13 @@ const CorrelationView: React.FC = () => {
             />
 
           </ScatterChart>
-        </ResponsiveContainer>
-        
+          </ResponsiveContainer>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <div className="text-zinc-500 text-sm">Loading chart...</div>
+          </div>
+        )}
+
         {/* Legend Overlay */}
         <div className="absolute top-6 right-6 flex flex-col gap-2 text-xs">
             <div className="flex items-center gap-2">

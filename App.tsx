@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { NAV_ITEMS } from './constants';
 import { View } from './types';
 import Hero from './components/Hero';
@@ -7,16 +7,21 @@ import CorrelationView from './components/CorrelationView';
 import FuturesView from './components/FuturesView';
 import DataSourceSelector from './components/DataSourceSelector';
 import { DataSourceProvider } from './context/DataSourceContext';
+import { useVixHistory, useCorrelationData } from './hooks';
 
 const AppContent: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>(View.DISTRIBUTION);
 
+  // Load data once at app level
+  const vixHistory = useVixHistory({ startDate: '2020-01-01' });
+  const correlationData = useCorrelationData({ startDate: '2020-01-01' });
+
   const renderContent = () => {
     switch (currentView) {
       case View.DISTRIBUTION:
-        return <DistributionView />;
+        return <DistributionView data={vixHistory.data} isLoading={vixHistory.isLoading} error={vixHistory.error} />;
       case View.CORRELATION:
-        return <CorrelationView />;
+        return <CorrelationView data={correlationData.data} isLoading={correlationData.isLoading} error={correlationData.error} />;
       case View.FUTURES:
         return <FuturesView />;
       case View.TBD1:

@@ -15,19 +15,22 @@ export default async function handler(
   const { period1, period2 } = req.query;
 
   try {
-    const result = await yahooFinance.historical('^VIX', {
+    const result = await yahooFinance.chart('^VIX', {
       period1: (period1 as string) || '2020-01-01',
       period2: (period2 as string) || new Date().toISOString().split('T')[0],
+      interval: '1d',
     });
 
-    const data = result.map((d) => ({
-      date: d.date.toISOString().split('T')[0],
-      close: d.close,
-      high: d.high,
-      low: d.low,
-      open: d.open,
-      year: d.date.getFullYear(),
-    }));
+    const data = result.quotes
+      .filter((d) => d.close != null && d.close > 0)
+      .map((d) => ({
+        date: new Date(d.date).toISOString().split('T')[0],
+        close: d.close,
+        high: d.high,
+        low: d.low,
+        open: d.open,
+        year: new Date(d.date).getFullYear(),
+      }));
 
     res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate');
     return res.status(200).json({ data, source: 'yahoo' });
