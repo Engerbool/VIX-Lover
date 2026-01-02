@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-VIX Impulse is a React-based dashboard for VIX (Volatility Index) analytics. It features interactive charts for VIX distribution analysis, SPX/VIX correlation, and futures term structure visualization with real-time data from Yahoo Finance API.
+VIX Lover is a React-based dashboard for VIX (Volatility Index) analytics. It features interactive charts for VIX distribution analysis, SPX/VIX correlation, and futures term structure visualization with real-time data from Yahoo Finance API.
 
 ## Development Commands
 

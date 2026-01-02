@@ -104,7 +104,7 @@ const AppContent: React.FC = () => {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
         
         <div className="max-w-7xl mx-auto px-4 text-center text-zinc-500 text-xs relative z-10">
-          <p>© 2024 VIX Impulse. All data is delayed by 15 minutes.</p>
+          <p>© 2024 VIX Lover. All data is delayed by 15 minutes.</p>
           <p className="mt-2">Designed for advanced volatility analysis.</p>
         </div>
       </footer>
