@@ -1,0 +1,5 @@
+{
+  "name": "VIX Impulse",
+  "description": "A modern, interactive dashboard for VIX index analytics, featuring distribution, correlation, and futures data visualization with a dark-mode aesthetic.",
+  "requestFramePermissions": []
+}
