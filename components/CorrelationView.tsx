@@ -115,6 +115,13 @@ const CorrelationView: React.FC = () => {
     startDate: '2020-01-01',
   });
 
+  // State for Range Slider (Indices)
+  const [range, setRange] = useState({ start: 0, end: 0 });
+  const [rangeInitialized, setRangeInitialized] = useState(false);
+
+  // State for Hover Interaction
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+
   // Fallback to mock data if API fails or returns empty
   const mockHistory = useMemo(() => generateCorrelationHistory(), []);
   const fullHistory = useMemo(() => {
@@ -124,23 +131,20 @@ const CorrelationView: React.FC = () => {
     return mockHistory;
   }, [apiData, mockHistory]);
 
-  // Show loading state
-  if (isLoading && apiData.length === 0) {
-    return <LoadingState message="Loading market data..." />;
-  }
-
   const totalDays = fullHistory.length;
 
-  // State for Range Slider (Indices)
-  const [range, setRange] = useState({ start: totalDays - 365, end: totalDays - 1 });
-  
-  // State for Hover Interaction
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  // Initialize range when data loads
+  useEffect(() => {
+    if (totalDays > 0 && !rangeInitialized) {
+      setRange({ start: Math.max(0, totalDays - 365), end: totalDays - 1 });
+      setRangeInitialized(true);
+    }
+  }, [totalDays, rangeInitialized]);
 
   // Filter Data based on Range
   const chartData = useMemo(() => {
     return fullHistory.slice(
-        Math.max(0, range.start), 
+        Math.max(0, range.start),
         Math.min(totalDays, range.end + 1)
     );
   }, [fullHistory, range, totalDays]);
@@ -192,8 +196,13 @@ const CorrelationView: React.FC = () => {
   // Formatters
   const startDateStr = fullHistory[Math.min(Math.max(0, range.start), totalDays-1)]?.date;
   const endDateStr = fullHistory[Math.min(Math.max(0, range.end), totalDays-1)]?.date;
-  const leftPct = (range.start / totalDays) * 100;
-  const rightPct = (range.end / totalDays) * 100;
+  const leftPct = totalDays > 0 ? (range.start / totalDays) * 100 : 0;
+  const rightPct = totalDays > 0 ? (range.end / totalDays) * 100 : 0;
+
+  // Show loading state (after all hooks)
+  if (isLoading && apiData.length === 0) {
+    return <LoadingState message="Loading market data..." />;
+  }
 
   return (
     <div className="w-full h-full flex flex-col">

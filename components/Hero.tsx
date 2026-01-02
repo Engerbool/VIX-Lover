@@ -16,22 +16,20 @@ const Hero: React.FC = () => {
   const currentRef = useRef({ x: 0, y: 0 });
   const frameRef = useRef<number>(0);
 
-  // Initialize Unicorn Studio
+  // Initialize Unicorn Studio (using original embed code pattern)
   useEffect(() => {
     if (!window.UnicornStudio) {
-        window.UnicornStudio = { isInitialized: false };
-        const script = document.createElement('script');
-        script.src = "https://cdn.jsdelivr.net/gh/hiunicornstudio/unicornstudio.js@v2.0.0/dist/unicornStudio.umd.js";
-        script.onload = () => {
-            if (!window.UnicornStudio.isInitialized) {
-                window.UnicornStudio.init();
-                window.UnicornStudio.isInitialized = true;
-            }
-        };
-        document.body.appendChild(script);
-    } else if (!window.UnicornStudio.isInitialized) {
-        window.UnicornStudio.init();
-        window.UnicornStudio.isInitialized = true;
+      window.UnicornStudio = { isInitialized: false };
+      const script = document.createElement('script');
+      script.src = "https://cdn.jsdelivr.net/gh/hiunicornstudio/unicornstudio.js@v2.0.0/dist/unicornStudio.umd.js";
+      script.onload = () => {
+        if (!window.UnicornStudio.isInitialized) {
+          // Use global UnicornStudio directly as in original embed code
+          (window as any).UnicornStudio.init();
+          window.UnicornStudio.isInitialized = true;
+        }
+      };
+      (document.head || document.body).appendChild(script);
     }
   }, []);
 
