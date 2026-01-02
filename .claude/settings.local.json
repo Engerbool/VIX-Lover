@@ -5,7 +5,9 @@
       "Bash(cat:*)",
       "Bash(npm install:*)",
       "Bash(npm run build:*)",
-      "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd real-time VIX data integration with Yahoo Finance API\n\n- Add Vercel serverless functions for VIX, SPX, and futures data\n- Create custom React hooks for data fetching with fallback to mock data\n- Add DataSourceSelector component for Yahoo/CBOE switching\n- Refactor chart components to use API data\n- Add loading and error state components\n\n🤖 Generated with [Claude Code]\\(https://claude.ai/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd real-time VIX data integration with Yahoo Finance API\n\n- Add Vercel serverless functions for VIX, SPX, and futures data\n- Create custom React hooks for data fetching with fallback to mock data\n- Add DataSourceSelector component for Yahoo/CBOE switching\n- Refactor chart components to use API data\n- Add loading and error state components\n\n🤖 Generated with [Claude Code]\\(https://claude.ai/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(ls:*)",
+      "Bash(git add:*)"
     ]
   }
 }
